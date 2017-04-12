@@ -10,11 +10,10 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from selenium import webdriver
 
 PREVLIST = []
 NEXTLIST = []
-MAXPAGES = 1
+MAXPAGES = 3
 
 BASEURL = "http://www.freeomovie.com/page/"
 DATAPATH = str(os.getcwd() + "/Data/")
@@ -231,6 +230,7 @@ class Window():
                     imgpath = str(DATAPATH + name + img_format)
                     self.my_download(imgurl, imgpath)
                     PREVLIST.append([str(name), str(imgpath), str(url)])
+        os.remove(outname)
         for elem in PREVLIST:
             print(elem)
         return
