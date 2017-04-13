@@ -6,6 +6,7 @@ import threading
 import multiprocessing
 import tempfile
 import requests
+import subprocess
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
@@ -13,7 +14,10 @@ from PyQt5.QtGui import *
 
 PREVLIST = []
 NEXTLIST = []
-MAXPAGES = 3
+MAXPAGES = 5
+
+CURRTHREADS = multiprocessing.Value("i", 0)
+LIMIT = 5
 
 BASEURL = "http://www.freeomovie.com/page/"
 DATAPATH = str(os.getcwd() + "/Data/")
@@ -39,7 +43,6 @@ class Window():
 
     def __init__(self):
         self.initalize()
-        time.sleep(5)
         self.widget = QWidget()
         self.widget.setObjectName("Widget")
         self.widget.setGeometry(QRect(0, 0, 800, 600))
@@ -58,6 +61,7 @@ class Window():
         self.btn_remove = QPushButton(self.widget)
         self.btn_remove.setText("Remove")
         self.btn_remove.setGeometry(QRect(650, 480, 100, 30))
+        self.btn_remove.setEnabled(False)
         self.btn_remove.clicked.connect(lambda: self.remove())
         self.btn_skip = QPushButton(self.widget)
         self.btn_skip.setText("Skip Remaining")
@@ -112,6 +116,12 @@ class Window():
             self.pxmp = self.pxmp.scaledToHeight(500)
             self.url = self.curr[2]
             self.img_label.setPixmap(self.pxmp)
+        if not self.curr in NEXTLIST:
+            self.btn_save.setEnabled(True)
+            self.btn_remove.setEnabled(False)
+        else:
+            self.btn_save.setEnabled(False)
+            self.btn_remove.setEnabled(True)
 
     def movelistprev(self):
         if self.itera > 0 and not self.curr in PREVLIST:
@@ -142,13 +152,19 @@ class Window():
             self.pxmp = self.pxmp.scaledToHeight(500)
             self.url = self.curr[2]
             self.img_label.setPixmap(self.pxmp)
+        if not self.curr in NEXTLIST:
+            self.btn_save.setEnabled(True)
+            self.btn_remove.setEnabled(False)
+        else:
+            self.btn_save.setEnabled(False)
+            self.btn_remove.setEnabled(True)
 
     def save(self):
         print("Start adding")
         self.btn_save.setEnabled(True)
         if self.itera <= len(PREVLIST):
             if not self.curr in NEXTLIST:
-                NEXTLIST.append([self.curr[0], self.curr[1], self.curr[2]])
+                NEXTLIST.append(self.curr)
                 #PREVLIST.insert(self.itera, self.curr)
                 #self.itera = self.itera + 1
                 #self.curr = PREVLIST.pop(self.itera)
@@ -158,9 +174,8 @@ class Window():
                 #self.url = self.curr[2]
                 #self.img_label.setPixmap(self.pxmp)
                 print("finished adding")
-            else:
-                print("Already in list")
                 self.btn_save.setEnabled(False)
+                self.btn_remove.setEnabled(True)
 
         if self.itera == (len(PREVLIST)):
             print("Starting next")
@@ -168,10 +183,12 @@ class Window():
 
 
     def remove(self):
-        self.btn_remove.setEnabled(True)
-        if self.url in NEXTLIST:
-            NEXTLIST.remove(self.url)
+        self.btn_save.setEnabled(True)
+        if self.curr in NEXTLIST:
+            NEXTLIST.remove(self.curr)
             print("removed")
+            self.btn_save.setEnabled(True)
+            self.btn_remove.setEnabled(False)
         else:
             self.btn_remove.setEnabled(False)
 
@@ -198,6 +215,7 @@ class Window():
         for number in range(1, MAXPAGES+1):
             worker = threading.Thread(target=self.parser, args=(str(number), ), daemon=True)
             worker.start()
+            time.sleep(2)
 
     def parser(self, val):
         """ """
@@ -237,10 +255,12 @@ class Window():
 
     def my_download(self, url, outname):
         """ """
+        print("Downloading " + url + " as " + outname)
         if not os.path.exists(outname):
             with open(outname, "wb") as file:#open in binary write mode
                 response = requests.get(url, headers=HEADERS)#get request
                 file.write(response.content)#write to file
+            print("Finished Downloading: " + outname)
 
     def startnxtroutine(self):
         for movie in NEXTLIST:
@@ -282,9 +302,10 @@ class Window():
                         partlist.append(url)
                     for part in partlist:
                         index = partlist.index(part) + 1
+                        CURRTHREADS.value = CURRTHREADS.value + 1
                         getter = threading.Thread(target=self.parsepart, args=(movie[0], part, index), daemon=True)
                         getter.start()
-                        while getter.is_alive():
+                        while CURRTHREADS.value == LIMIT:
                             time.sleep(1)
                         return
 
@@ -293,8 +314,9 @@ class Window():
         partfile = VIDEOPATH + str(name) + " CD " + str(index) + ".mp4"
         self.my_download(url, partname)
         if "openload" in url:
-            url = url.replace("/f/", "/embed/")
-            subprocess.Popen([BROWSER, url, "&"]).communicate()
+            #url = url.replace("/f/", "/embed/")
+            subprocess.Popen([BROWSER, url]).communicate()
+            return
             """ses = requests.Session()
             init_req = ses.get(url, headers=HEADERS)
             fifo = webdriver.Firefox()
@@ -338,8 +360,10 @@ class Window():
                     if "name=\"hash\"" in line:
                         hash_ = line.split("value=\"")[1].split("\"")[0]
 
+            time.sleep(2)
             names = ["op", "usr_login", "id", "fname", "referer", "hash"]
             params = [op, usr_login, _id, fname, referer, hash_]
+            print(dict(zip(names, params)))
             time.sleep(12)
             req = ses.post(url, data=dict(zip(names, params)), cookies=init_req.cookies, headers=HEADERS)
             with tempfile.TemporaryFile() as tempf:
@@ -349,6 +373,7 @@ class Window():
                     if b"file:" in line:
                         parturl = line.split(b"file: \"")[1].split(b"\"")[0]
                         self.my_download(parturl.decode('UTF-8'), partfile)
+                        return
 
 def __main__():
 
